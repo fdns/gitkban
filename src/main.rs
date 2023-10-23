@@ -1,15 +1,19 @@
+mod github;
 mod kanbanize;
+mod logic;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // construct a subscriber that prints formatted traces to stdout
     let subscriber = tracing_subscriber::FmtSubscriber::builder()
-        .with_max_level(tracing::Level::INFO)
+        .with_max_level(tracing::Level::DEBUG)
         .finish();
-    // use that subscriber to process traces emitted after this point
     tracing::subscriber::set_global_default(subscriber).unwrap();
+
+    // Load env vars
     dotenv::dotenv().ok().unwrap();
 
+    // Load services
     let kanbanize = kanbanize::Kanbanize::new(
         std::env::var("KANBANIZE_BASE_PATH")
             .expect("KANBANIZE_BASE_PATH must be set")
@@ -18,14 +22,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .expect("KANBANIZE_API_KEY must be set")
             .as_str(),
     );
+    let github = github::Github::new(
+        std::env::var("GITHUB_PERSONAL_TOKEN").expect("GITHUB_PERSONAL_TOKEN must be set"),
+        std::env::var("GITHUB_TRACK_USER").expect("GITHUB_TRACK_USER must be set"),
+    );
 
-    let card = kanbanize.find_by_id(13751 * 100).await?;
-    process_card(card);
+    // Run process
+    logic::run(github, kanbanize).await;
     return Ok(());
-}
-
-fn process_card(card: kanbanize_api::models::GetCard200Response) {
-    let description =
-        html2md::parse_html(card.data.unwrap().description.unwrap_or_default().as_str());
-    tracing::info!("Got card:\n{}", description);
 }
