@@ -1,0 +1,19 @@
+[package]
+name = "gitkban"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+tokio = { version = "1.33.0", features = ["rt", "macros"] }
+kanbanize-api = { git = "https://github.com/fdns/kanbanize-api.git" }
+dotenv = "0.15.0"
+tracing = "0.1.40"
+tracing-subscriber = "0.3.17"
+html2md = "0.2.14"
+
+[dev-dependencies]
+mockito = "1.2.0"
+serde_json = "1.0.107"
+testresult = "0.3.0"
