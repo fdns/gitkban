@@ -47,7 +47,6 @@ impl Github {
         url: &str,
         body: String,
     ) -> Result<PullRequest, Box<dyn std::error::Error>> {
-        //self.instance.pulls(owner, repo).update(pull_number).body(body).send()
         let data = serde_json::json!({
             "body": body
         });

@@ -6,7 +6,7 @@ mod logic;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // construct a subscriber that prints formatted traces to stdout
     let subscriber = tracing_subscriber::FmtSubscriber::builder()
-        .with_max_level(tracing::Level::DEBUG)
+        .with_max_level(tracing::Level::INFO)
         .finish();
     tracing::subscriber::set_global_default(subscriber).unwrap();
 
@@ -27,7 +27,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::env::var("GITHUB_TRACK_USER").expect("GITHUB_TRACK_USER must be set"),
     );
 
+    let owner_filter: String =
+        std::env::var("GITHUB_OWNER_FILTER").expect("GITHUB_OWNER_FILTER must be set");
     // Run process
-    logic::run(github, kanbanize).await;
+    logic::Service::new(github, kanbanize, owner_filter)
+        .run()
+        .await;
     return Ok(());
 }
