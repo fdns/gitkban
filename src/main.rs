@@ -4,14 +4,15 @@ mod logic;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Load env vars
+    dotenv::dotenv().ok().unwrap();
+
     // construct a subscriber that prints formatted traces to stdout
     let subscriber = tracing_subscriber::FmtSubscriber::builder()
         .with_max_level(tracing::Level::INFO)
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .finish();
     tracing::subscriber::set_global_default(subscriber).unwrap();
-
-    // Load env vars
-    dotenv::dotenv().ok().unwrap();
 
     // Load services
     let kanbanize = kanbanize::Kanbanize::new(
