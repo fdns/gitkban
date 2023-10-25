@@ -35,7 +35,6 @@ impl Service {
             if let Err(e) = self.process_issue(&issue).await {
                 tracing::error!("Error processing issue {}: {}", issue.url, e);
             }
-            break;
         }
     }
 
