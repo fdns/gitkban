@@ -24,18 +24,22 @@ impl Service {
         loop {
             interval.tick().await;
             tracing::info!("Checking for new PR's");
-            self.process().await;
+            if let Err(e) = self.process().await {
+                tracing::error!("Error processing issues: {}", e)
+            };
         }
     }
 
-    async fn process(&self) {
-        let issues = self.github.get_issues().await.unwrap();
+    async fn process(&self) -> Result<(), Box<dyn std::error::Error>> {
+        let issues = self.github.get_issues().await?;
         for issue in issues.items {
             tracing::debug!("Received issue {:?}", issue);
             if let Err(e) = self.process_issue(&issue).await {
                 tracing::error!("Error processing issue {}: {}", issue.url, e);
             }
         }
+
+        Ok(())
     }
 
     async fn process_issue(&self, issue: &Issue) -> Result<(), Box<dyn std::error::Error>> {
