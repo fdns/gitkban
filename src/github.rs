@@ -1,9 +1,31 @@
-use octocrab::{
-    models::{issues::Issue, pulls::PullRequest},
-    Page,
-};
 use serde_json;
 use url::Url;
+
+type Error = Box<dyn std::error::Error>;
+type Result<T, E = Error> = std::result::Result<T, E>;
+
+#[derive(Debug, Clone)]
+pub struct PullRequest {
+    pub url: Url,
+    pub is_private: bool,
+    pub repository_owner: String,
+    pub head_reference: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct Issue {
+    pub url: Url,
+    pub body: String,
+    pub pull_request_url: Option<Url>,
+}
+
+#[cfg_attr(test, mockall::automock)]
+#[async_trait::async_trait]
+pub trait GithubApi {
+    async fn get_issues(&self) -> Result<Vec<Issue>>;
+    async fn get_pull_from_url(&self, url: &Url) -> Result<PullRequest>;
+    async fn update_pull_request(&self, url: &Url, body: String) -> Result<PullRequest>;
+}
 
 pub struct Github {
     instance: octocrab::Octocrab,
@@ -11,17 +33,20 @@ pub struct Github {
 }
 
 impl Github {
-    pub fn new(token: String, track_user: String) -> Self {
-        Github {
+    pub fn new(token: String, track_user: String) -> Box<dyn GithubApi> {
+        Box::new(Github {
             instance: octocrab::OctocrabBuilder::new()
                 .personal_token(token)
                 .build()
                 .unwrap(),
             track_user,
-        }
+        })
     }
+}
 
-    pub async fn get_issues(&self) -> Result<Page<Issue>, Box<dyn std::error::Error>> {
+#[async_trait::async_trait]
+impl GithubApi for Github {
+    async fn get_issues(&self) -> Result<Vec<Issue>> {
         self.instance
             .search()
             .issues_and_pull_requests(&format!("is:open is:pr author:{}", self.track_user))
@@ -29,33 +54,72 @@ impl Github {
             .order("desc")
             .send()
             .await
-            .map_err(|e| e.into())
+            .map_err(|e| e.to_string())
+            .map(|issues| {
+                issues
+                    .into_iter()
+                    .map(|issue| issue.try_into())
+                    .collect::<Result<Vec<Issue>>>()
+            })?
     }
 
-    pub async fn get_pull_from_url(
-        &self,
-        url: &Url,
-    ) -> Result<PullRequest, Box<dyn std::error::Error>> {
+    async fn get_pull_from_url(&self, url: &Url) -> Result<PullRequest> {
         self.instance
-            .get::<PullRequest, &Url, ()>(url, None)
+            .get::<octocrab::models::pulls::PullRequest, &Url, ()>(url, None)
             .await
-            .map_err(|e| e.into())
+            .map_err(|e| Into::<Error>::into(e))
+            .map(|v| v.try_into())?
     }
 
-    pub async fn update_issue(
-        &self,
-        url: &str,
-        body: String,
-    ) -> Result<PullRequest, Box<dyn std::error::Error>> {
+    async fn update_pull_request(&self, url: &Url, body: String) -> Result<PullRequest> {
         let data = serde_json::json!({
             "body": body
         });
 
         tracing::debug!("Updating body to: {}", data.to_string());
         self.instance
-            .patch::<PullRequest, &str, serde_json::Value>(url, Some(&data))
+            .patch::<octocrab::models::pulls::PullRequest, &Url, serde_json::Value>(
+                url,
+                Some(&data),
+            )
             .await
-            .map_err(|e| e.into())
+            .map_err(|e| Into::<Error>::into(e))
+            .map(|v| v.try_into())?
+    }
+}
+
+impl TryFrom<octocrab::models::issues::Issue> for Issue {
+    type Error = Error;
+    fn try_from(value: octocrab::models::issues::Issue) -> Result<Self, Self::Error> {
+        Ok(Self {
+            url: value.url,
+            body: value.body.unwrap_or_default(),
+            pull_request_url: value.pull_request.map(|pull| pull.url.clone()),
+        })
+    }
+}
+
+impl TryFrom<octocrab::models::pulls::PullRequest> for PullRequest {
+    type Error = Error;
+    fn try_from(value: octocrab::models::pulls::PullRequest) -> Result<Self, Self::Error> {
+        return Ok(Self {
+            url: value.url.parse()?,
+            is_private: value
+                .base
+                .clone()
+                .repo
+                .ok_or("repository of pull request not found")?
+                .private
+                .unwrap_or(true),
+            repository_owner: value
+                .base
+                .repo
+                .ok_or("repository of pull request not found")?
+                .owner
+                .ok_or("owner not found")?
+                .login,
+            head_reference: value.head.ref_field,
+        });
     }
 }
 
@@ -172,7 +236,14 @@ mod test {
         };
 
         let issues = github.get_issues().await?;
-        assert_eq!(issues.items.get(0).unwrap().id, 1638578736.into());
+        assert_eq!(
+            issues[0].url,
+            Url::parse("https://api.github.com/repos/oh-my-fish/plugin-pyenv/issues/11").unwrap()
+        );
+        assert_eq!(
+            issues[0].pull_request_url.as_ref().unwrap(),
+            &Url::parse("https://api.github.com/repos/oh-my-fish/plugin-pyenv/pulls/11").unwrap()
+        );
 
         mock.assert_async().await;
         Ok(())

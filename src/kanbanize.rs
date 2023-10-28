@@ -1,15 +1,29 @@
 use kanbanize_api::models::GetCard200Response;
 
+type Error = Box<dyn std::error::Error>;
+type Result<T, E = Error> = std::result::Result<T, E>;
+
+#[cfg_attr(test, mockall::automock)]
+#[async_trait::async_trait]
+pub trait KanbanizeApi {
+    async fn find_by_id(&self, id: i32) -> Result<Card>;
+}
+
+#[derive(Debug, Clone)]
+pub struct Card {
+    pub description: String,
+}
+
 #[derive(Debug)]
 pub struct Kanbanize {
     config: kanbanize_api::apis::configuration::Configuration,
 }
 
 impl Kanbanize {
-    pub fn new(base_path: &str, api_key: &str) -> Self {
-        Kanbanize {
+    pub fn new(base_path: &str, api_key: &str) -> Box<dyn KanbanizeApi> {
+        Box::new(Kanbanize {
             config: Self::new_config(base_path, api_key),
-        }
+        })
     }
 
     fn new_config(
@@ -25,15 +39,29 @@ impl Kanbanize {
             ..Default::default()
         }
     }
+}
 
-    #[tracing::instrument]
-    pub async fn find_by_id(
-        &self,
-        id: i32,
-    ) -> Result<GetCard200Response, Box<dyn std::error::Error>> {
+#[async_trait::async_trait]
+impl KanbanizeApi for Kanbanize {
+    async fn find_by_id(&self, id: i32) -> Result<Card> {
         let result = kanbanize_api::apis::cards_api::get_card(&self.config, id).await;
         tracing::debug!("Response: {:?}", result);
-        return result.map_err(|e| e.to_string().into());
+        return result
+            .map_err(|e| Into::<Error>::into(e.to_string()))
+            .map(|c| c.try_into())?;
+    }
+}
+
+impl TryFrom<GetCard200Response> for Card {
+    type Error = Error;
+    fn try_from(value: GetCard200Response) -> Result<Self, Self::Error> {
+        Ok(Self {
+            description: value
+                .data
+                .ok_or("card has no data")?
+                .description
+                .unwrap_or_default(),
+        })
     }
 }
 
@@ -100,12 +128,7 @@ mod test {
         let client = Kanbanize::new(server.url().as_str(), "api_key");
         let card = client.find_by_id(4321).await?;
 
-        let card = card.data.ok_or("No card datar")?;
-        assert_eq!(card.card_id.unwrap_or(0), 4321);
-        assert_eq!(
-            card.description.unwrap_or("".to_string()),
-            "Card description".to_string()
-        );
+        assert_eq!(card.description, "Card description".to_string());
 
         mock.assert_async().await;
         Ok(())

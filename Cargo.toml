@@ -16,7 +16,10 @@ octocrab = "0.31.2"
 regex = "1.10.2"
 url = "2.4.1"
 serde_json = "1.0.107"
+async-trait = "0.1.74"
 
 [dev-dependencies]
 mockito = "1.2.0"
 testresult = "0.3.0"
+mockall = "0.11.4"
+chrono = "0.4.31"
