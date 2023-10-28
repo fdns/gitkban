@@ -1,4 +1,6 @@
 # Gitkban
+[![Rust](https://github.com/fdns/gitkban/actions/workflows/test.yml/badge.svg)](https://github.com/fdns/gitkban/actions/workflows/test.yml)
+
 A Rust application for automatically updating new pull requests that lack a body by associating them with an equivalent Kanbanize ticket. This project helps streamline the process of managing pull requests and Kanbanize tickets by inserting the Kanbanize ticket's body into the pull request description.
 
 ## Features
